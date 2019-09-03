@@ -1,9 +1,6 @@
 
 import nest
 
-# sim time in ms
-sim_time = 100.0
-PATH = "users/kang/"
 
 # neuron params
 C_m = 250.0  # capacitance (pF)
@@ -47,8 +44,8 @@ nest.CopyModel("static_synapse", "syn_inhi", params={"delay":d, "weight":gbar_I}
 N = 10000  # total num. of neurons in each module
 N_E = int(0.8 * N)  # exci.
 N_I = int(0.2 * N)  # inhi.
-N_E_speci = epsilon * N_E  # num. of stimulus specific exci. neurons in each module, not needed for random network
-N_I_speci = epsilon * N_I  # inhi.
+N_E_speci = int(epsilon * N_E)  # num. of stimulus specific exci. neurons in each module, not needed for random network
+N_I_speci = int(epsilon * N_I)  # inhi.
 # K_E = int(epsilon * N_E) # exci.pre synapse number for each neuron
 # K_I = int(epsilon * N_I) # inhi.
 module_depth = 4
@@ -65,6 +62,8 @@ K_x_rest = int(p_x_rest * N_X)
 # input stimuli
 num_stimulus = 2  # num. of stimuli
 delta = 3  # Poisson process rate factor for stimuli
-t_onset = 0.1  # stimuli onset time
+t_onset = 0.1
+
+# stimuli onset time
 t_asterisk = 200.0  # how long each Poisson process lasts
-input_spike_len = 800 # dim of input in spikes
+input_spike_len = 800  # dim of input in spikes

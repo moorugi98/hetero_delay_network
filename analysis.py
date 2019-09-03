@@ -24,15 +24,17 @@ def pairwise_corr(spike_times, spike_senders, record_time):
 
     # parameter
     sum_pearson_coef = 0
-    num_pair = 500 # num. of pair to compute avg. pairwise_cor
-    bin_size = 2 # bin_size for computing spike train
-    
+    num_pair = 500  # num. of pair to compute avg. pairwise_cor
+    bin_size = 2  # bin_size for computing spike train
+
+    spike_times = spike_times -t_onset  # control for t_onset ruining time bin
+
     pairs = list(itertools.combinations(np.unique(spike_senders), 2))
     for pair in random.sample(pairs, num_pair): # iterate over random num_pair of pairs
         boolean_arr = np.zeros((2, int(record_time // bin_size)), dtype=bool) # init spike train
         for nid, neuron in enumerate(pair): # iterate over two neurons in each pair
             indices = np.where(neuron == spike_senders)[0] # [12, 17, 21,...] indices of spike time of a current neuron
-            st = spike_times[indices] - 0.0001 # [0.87, 18.2, 238.09...] # dirty trick to make binning easier
+            st = spike_times[indices] - 0.00001 # [0.9999, 18.999, 238.9999...] # dirty trick to make binning easier
             boolean_arr[nid, np.int_(st//bin_size)] = True # now the array is full with binned spike train
         sum_pearson_coef += np.corrcoef(boolean_arr)[0,1] # compute sum of Pearson corr. coef.
     return sum_pearson_coef / num_pair
@@ -65,32 +67,31 @@ def fano_factor(spike_times):
 
 
 # IV. classification
-def train(voltage_events):
-    # arrays
-    voltages_array = np.reshape(voltage_events["V_m"], (-1, N_E)) # record only from exci.
-    X = voltages_array[t_asterisk::pos_dur] # snapshot of mem.pot. at the end of stimuli input with shape (3,800)
-    target_output = 1
+def train(volt_values, target_output):
+    """
+    function to train a simple linear regression to fit the snapshot of membrane potential to binary classification
+    using a ridge regression with cross-validation for regularization parameter.
+    :param volt_values: np.arr, shape: len.of stim. presentation x N_E.
+    snapshots of membrane potential at each stimuli offset.
+    :param target_output: np.arr, shape: num. of stimuli x len. of stim. presentation. @sym_seq in the main.py
+    :return: list, each element saves the score for each module
+    """
+    scores = []
+    for mod_i in range(module_depth):
+        X = volt_values[:,mod_i,:N_E]  # take only activities of exci. neurons. 50x8000
+        print(X)
+        # split the data
+        split_ratio = 0.2  # how much percnentage of the data will be used for the test
+        X_train, X_test, y_train, y_test = train_test_split(X, target_output, test_size=split_ratio)
 
-    # split the data
-    split_ratio = 0.2  # how much percentage of the data will be used for the test
-    X_train, X_test, y_train, y_test = train_test_split(X, target_output, test_size=split_ratio)
+        # fit
+        deltas = [0, 0.1, 1.0, 10.0, 100.0]  # regularization parameter
+        fit_model = lm.RidgeClassifierCV(alpha=deltas, fit_intercept=True)\
+            .fit(X=X_train, y=y_train) # linear ridge regression with cross-validation for regularization parameter
 
-    # I.
-    # fit
-    delta = 0.1 # regularization parameter
-    fit_model = lm.Ridge(alpha=delta).fit(X=X_train, y=y_train)
-
-    # test
-    fit_model.predict(X_test, y_test)
-
-    # II.
-    # fit
-    deltas = [1,5,10]
-    fit_model = lm.RidgeClassifierCV(alpha=deltas, fit_intercept=True)\
-        .fit(X=X_train, y=y_train) # linear ridge regression
-
-    # test
-    fit_model.score(X_test, y_test)
+        # test
+        scores.append(fit_model.score(X_test, y_test))
+    return scores
 
 
 def plot_V_m(filename, times, voltages, num_to_plot=5):
@@ -122,12 +123,7 @@ def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot = 1000)
     :return:
     """
     rand_choice = np.random.randint(0 +  N*layer, N*(layer+1), num_to_plot) # choose neurons to plot randomly
-    print("spike_senders: ", spike_senders)
-    print("rand_choice: ", rand_choice)
     mask = np.isin(spike_senders, rand_choice)
-    print("mask: ", mask)
-    print("spike senders: ", spike_senders[mask])
-    print("length: ", spike_senders[mask].shape)
     pylab.scatter(spike_times[mask], spike_senders[mask], s=0.1, c="r")
     pylab.savefig(filename, bbox_to_inches="tight")
 

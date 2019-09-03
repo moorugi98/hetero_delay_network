@@ -7,14 +7,15 @@ from params import *
 import analysis
 
 
-
 """
 select network type and stimuli existence
 """
+sim_time = float(eval(sys.argv[3]))  # simulate time
 mode = sys.argv[1]  # input should be either "random" or "structured"
 stimuli_set = eval(sys.argv[2])  # input should be either "True" or "False"
 print("topology: ", sys.argv[1])
 print("stimuli on?: ", stimuli_set)
+print("simulate for {} ms with {} extra onset time".format(sim_time, t_onset))
 
 
 
@@ -39,9 +40,7 @@ for mod_i in range(module_depth):  # iterate over different modules
     nest.SetStatus(current_mod_pop, "V_m", np.random.uniform(E_L, V_th, len(current_mod_pop))) # random init.membr.pot.
 for mod_i in range(module_depth):  # don't use the same for loop to avoid id getting mixed
     # spike detector for each module
-    spike_device.append(nest.Create("spike_detector", params={"withgid": True, "withtime": True, "to_file": True,
-                                                              "label": "data/spikes_{}_stim={}".
-                                    format(mode, stimuli_set), "start": t_onset + 0.1}))
+    spike_device.append(nest.Create("spike_detector", params={"withgid": True, "withtime": True, "start": t_onset}))
     nest.Connect(pop[mod_i], spike_device[mod_i], conn_spec={"rule": "all_to_all"})  # connect spike det with neurons
 
 
@@ -82,23 +81,28 @@ for mod_i in range(module_depth-1):
 if stimuli is on, create input stimuli and corresponding poisson gen. and connect them to the input module
 """
 if stimuli_set:
+    # voltmeter for the whole network, record at every stimuli offset time
+    voltage_device = nest.Create("voltmeter", params={"withgid": True, "withtime": True,
+                                                      "interval": t_asterisk, "start": t_onset})
+    # connect voltmeter to neurons
+    [nest.Connect(voltage_device, pop_layer, conn_spec={"rule": "all_to_all"}) for pop_layer in pop]
+
+    # init. stimuli pattern
     sym_seq_len = int(sim_time//t_asterisk)  # how many presentation during the simulation occurs
     sym_seq = np.zeros((num_stimulus, sym_seq_len), dtype=bool)
     # for each presentation time select just one stimulus to be activated
     for time_index in range(sym_seq_len):
-        sym_seq[np.random.randint(low=0, high=num_stimulus), time_index] = True
+        sym_seq[:, time_index][np.random.randint(low=0, high=num_stimulus)] = True
 
     gen_stim = [] # list of poisson generators functioning as stimuli
     for stim_sym in sym_seq: # for each symbolic repr. of stimuli
         stim_time = np.arange(t_onset, t_onset + t_asterisk*sym_seq_len, t_asterisk)  # time points to turn on/off
         stim_rate = np.zeros(stim_time.shape[0])
         stim_rate[stim_sym] = delta * v_x * input_spike_len  # assign right rate if it's on, 3*5*800 (linear sum-up)
-        print("stim_sym: ", stim_sym)
-        print("stim_time: ", stim_time)
-        print("stim_rate: ", stim_rate)
         # create generator for each stimulus
-        gen_stim.append(nest.Create("inhomogeneous_poisson_generator",
-                                    params={"rate_times": stim_time, "rate_values": stim_rate}))
+        inhogen = nest.Create("inhomogeneous_poisson_generator")  # HERE IS THE ERROR (cannot set params by init.)
+        nest.SetStatus(inhogen, {"rate_times": list(stim_time), "rate_values": list(stim_rate)})
+        gen_stim.append(inhogen)
 
 
 
@@ -107,18 +111,13 @@ switch for different network configurations
 """
 if mode == "random":
     if stimuli_set:
-        # voltmeter for the whole network, record at every stimuli offset time
-        voltage_device = nest.Create("voltmeter", params={"withgid": True, "withtime": True, "to_file": True,
-                                                          "label": "voltage_{}_stim={}".format(mode, stimuli_set),
-                                                          "interval": t_asterisk, "start": t_onset + 0.1})
-        # connect voltmeter to neurons
-        [nest.Connect(voltage_device, pop_layer, conn_spec={"rule": "all_to_all"}) for pop_layer in pop]
         # connect stimuli generators to random sub-populations
         for stim_i in range(num_stimulus):
-            nest.Connect(gen_stim[stim_i], np.random.choice(pop_exci[0], N_E_speci, replace=False),
+            nest.Connect(gen_stim[stim_i], tuple(np.random.choice(pop_exci[0], N_E_speci, replace=False)),
                          conn_spec={"rule": "all_to_all"})
-            nest.Connect(gen_stim[stim_i], np.random.choice(pop_inhi[0], N_I_speci, replace=False),
+            nest.Connect(gen_stim[stim_i], tuple(np.random.choice(pop_inhi[0], N_I_speci, replace=False)),
                          conn_spec={"rule": "all_to_all"})
+
 
     pass  # nothing more to do
 
@@ -170,7 +169,7 @@ else:
 """
 simulate
 """
-nest.Simulate(sim_time)
+nest.Simulate(sim_time+t_onset)
 
 
 
@@ -204,11 +203,14 @@ for mod_i in range(module_depth):
     print("avg.firing rate: ", analysis.avg_firing_rate(spike_senders=spike_senders[mod_i], record_time=sim_time, N=N))
     print("Fano factor: ", analysis.fano_factor(spike_times[mod_i]))
 
-analysis.plot_raster(filename=PATH + "figs/raster_{}_stim={}.pdf".format(mode,stimuli_set),
-                     spike_times=spike_times[mod_i], spike_senders=spike_senders[mod_i], layer=2, num_to_plot=100)
+mod_i = 2
+analysis.plot_raster(filename="raster_{}_stim={}.pdf".format(mode,stimuli_set),
+                     spike_times=spike_times[mod_i], spike_senders=spike_senders[mod_i], layer=mod_i, num_to_plot=100)
 titles = ["synchrony", "firing rate", "variability"]
 ylabels  = ["Pearson CC", "spikes/sec", "Fano factor"]
 for measure_i in range(3):
-    analysis.plot_result(filename=PATH + "figs/{}_{}_stim={}.pdf".format(titles[measure_i],mode,stimuli_set),
+    analysis.plot_result(filename="{}_{}_stim={}.pdf".format(titles[measure_i],mode,stimuli_set),
                          arr_to_plot=measures[measure_i], title=titles[measure_i], ylabel=ylabels[measure_i])
 # analysis.plot_V_m(times=volt_times[:,mod_i,0], voltages=volt_values[:,mod_i,:])
+# np.save("train_res_{}.npy".format(mode),
+#         analysis.train(volt_values=volt_values[1:], target_output=sym_seq))  # omit the first recording step
