@@ -60,9 +60,9 @@ K_x_rest = int(p_x_rest * N_X)
 # K_M = int(p_ff * N_E) # num. of exci. syn. between modules
 
 # input stimuli
-num_stimulus = 2  # num. of stimuli
+num_stimulus = 10  # num. of stimuli
 delta = 3  # Poisson process rate factor for stimuli
-t_onset = 0.1
+t_onset = 0.0
 
 # stimuli onset time
 t_asterisk = 200.0  # how long each Poisson process lasts

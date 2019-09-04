@@ -27,7 +27,7 @@ def pairwise_corr(spike_times, spike_senders, record_time):
     num_pair = 500  # num. of pair to compute avg. pairwise_cor
     bin_size = 2  # bin_size for computing spike train
 
-    spike_times = spike_times -t_onset  # control for t_onset ruining time bin
+    spike_times = spike_times - t_onset  # control for t_onset ruining time bin
 
     pairs = list(itertools.combinations(np.unique(spike_senders), 2))
     for pair in random.sample(pairs, num_pair): # iterate over random num_pair of pairs
@@ -40,7 +40,30 @@ def pairwise_corr(spike_times, spike_senders, record_time):
     return sum_pearson_coef / num_pair
 
 
-# II. firing rate
+# II. LvR
+def revised_local_variation(spike_times, spike_senders):
+    """
+    compute the revised_local_variation (LvR) suggested by Shinomoto neuron-wise and return the avg. value
+    :param spike_times: list, nest.GetStatus(spike_detector, ["event"])[0]["times"]
+    :param spike_senders: list, nest.GetStatus(spike_detector, ["event"])[0]["senders"]
+    :return: int, mean LvR value
+    """
+    neuron_list = np.unique(spike_senders)  # all unique gids of neurons
+    print("LvR;neuron_list: ", neuron_list[:10])
+    lvr = np.zeros(neuron_list.shape[0])  # save lvr for each neuron
+
+    for ni, neuron in enumerate(neuron_list):
+        isi = np.ediff1d(spike_times[neuron == spike_senders])  # inter spike interval
+        if isi.shape[0] < 2:
+            lvr[ni] = np.nan
+        else:
+            lvr[ni] = ((3 / isi[:-1].shape[0]) *
+            (1 - np.sum(4*isi[:-1]*isi[1:]) / np.sum((isi[:-1] + isi[1:])**2)) *
+            (1 + (4*tau_ref) / np.sum(isi[:-1] + isi[1:])))
+    return np.nanmean(lvr)  # return the avg. value over all neurons
+
+
+# III. firing rate
 def avg_firing_rate(spike_senders, record_time, N):
     """
     compute the avg.firing rate over the whole population and time
@@ -54,19 +77,22 @@ def avg_firing_rate(spike_senders, record_time, N):
     return spike_senders.shape[0] / (record_time * N)
 
 
-# III. Fano factor
-def fano_factor(spike_times):
+# IV. Fano factor
+def fano_factor(spike_times, record_time):
     """
     compute the Fano factor by using the population avg. firing rate with 10 ms bin.
     :param spike_times: list, nest.GetStatus(spike_detector, ["event"])[0]["times"]
+    :param record_time: int, recording time in ms
     :return: Fano factor
     """
-    bin_size = 10
-    hist, edges = np.histogram(spike_times, bins=bin_size)
+    bin_size = 10  # width of a  single bin in ms
+    bins = np.arange(0, record_time+0.1, bin_size)  # define bin edges
+    hist, edges = np.histogram(spike_times, bins=bins)
+    print("fano; hist: ", hist)
     return np.var(hist) / np.mean(hist)
 
 
-# IV. classification
+# V. classification
 def train(volt_values, target_output):
     """
     function to train a simple linear regression to fit the snapshot of membrane potential to binary classification
@@ -78,10 +104,10 @@ def train(volt_values, target_output):
     """
     scores = []
     for mod_i in range(module_depth):
-        X = volt_values[:,mod_i,:N_E]  # take only activities of exci. neurons. 50x8000
-        print(X)
+        X = volt_values[:,mod_i,:]  # take only activities of exci. neurons. 50x8000
+        print("X in the training with shape timestep x neuronnum.: ", X.shape)
         # split the data
-        split_ratio = 0.2  # how much percnentage of the data will be used for the test
+        split_ratio = 0.2  # how much percentage of the data will be used for the test
         X_train, X_test, y_train, y_test = train_test_split(X, target_output, test_size=split_ratio)
 
         # fit
@@ -94,6 +120,11 @@ def train(volt_values, target_output):
     return scores
 
 
+
+#####################################################
+# Plotting
+#####################################################
+
 def plot_V_m(filename, times, voltages, num_to_plot=5):
     """
     plot the membrane potetinal time trace by selecting random neurons and plot the avg. at the end.
@@ -101,7 +132,7 @@ def plot_V_m(filename, times, voltages, num_to_plot=5):
     :param times: list, nest.GetStatus(voltage_detector, ["event"])[0]["times"] and reshaped to avoid repetitiveness
     :param voltages: list, nest.GetStatus(voltage_detector, ["event"])[0]["V_m"]
     :param num_to_plot: int, select how much neurons should be plotted from the population
-    :return: nothin'
+    :return: None
     """
     selected = np.random.choice(np.arange(0,N), num_to_plot) # for each module select num_to_plot neurons
     fig, axes = pylab.subplots(nrows=num_to_plot+1, ncols=1)
@@ -113,15 +144,18 @@ def plot_V_m(filename, times, voltages, num_to_plot=5):
     pylab.savefig(filename, bbox_to_inches="tight")
 
 
-def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot = 1000):
+def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot = 1000, plot_time = [6000, 8000]):
     """
     make a raster plot with @num_to_plot neurons
     :filename: str, name of the file to save
     :param spike_times: list, nest.GetStatus(spike_detector, ["event"])[0]["times"]
     :param spike_senders: list, nest.GetStatus(spike_detector, ["event"])[0]["senders"]
     :param num_to_plot: int, num of neurons to plot, default = 1000
-    :return:
+    :param plot_time: list, interval of time to plot the spikes
+    :return: None
     """
+    spike_times = spike_times[spike_times < plot_time[1]]  #
+    spike_times = spike_times[spike_times > plot_time[0]]
     rand_choice = np.random.randint(0 +  N*layer, N*(layer+1), num_to_plot) # choose neurons to plot randomly
     mask = np.isin(spike_senders, rand_choice)
     pylab.scatter(spike_times[mask], spike_senders[mask], s=0.1, c="r")
@@ -142,5 +176,3 @@ def plot_result(filename, arr_to_plot, title, ylabel):
     pylab.ylabel(ylabel)
     pylab.title(title)
     pylab.savefig(filename, bbox_to_inches="tight")
-
-
