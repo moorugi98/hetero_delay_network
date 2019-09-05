@@ -6,11 +6,12 @@ import itertools
 import random
 import numpy as np
 import matplotlib.pyplot as pylab
+from scipy.stats import gaussian_kde
 import sklearn.linear_model as lm
 from sklearn.model_selection import train_test_split
 
 from params import *
-
+import time
 
 # I. synchrony
 def pairwise_corr(spike_times, spike_senders, record_time):
@@ -21,7 +22,6 @@ def pairwise_corr(spike_times, spike_senders, record_time):
     : param record_time: int, recording time in ms
     :return: int, avg. Pearson pairwise_corr
     """
-
     # parameter
     sum_pearson_coef = 0
     num_pair = 500  # num. of pair to compute avg. pairwise_cor
@@ -29,14 +29,14 @@ def pairwise_corr(spike_times, spike_senders, record_time):
 
     spike_times = spike_times - t_onset  # control for t_onset ruining time bin
 
-    pairs = list(itertools.combinations(np.unique(spike_senders), 2))
-    for pair in random.sample(pairs, num_pair): # iterate over random num_pair of pairs
-        boolean_arr = np.zeros((2, int(record_time // bin_size)), dtype=bool) # init spike train
-        for nid, neuron in enumerate(pair): # iterate over two neurons in each pair
-            indices = np.where(neuron == spike_senders)[0] # [12, 17, 21,...] indices of spike time of a current neuron
-            st = spike_times[indices] - 0.00001 # [0.9999, 18.999, 238.9999...] # dirty trick to make binning easier
-            boolean_arr[nid, np.int_(st//bin_size)] = True # now the array is full with binned spike train
-        sum_pearson_coef += np.corrcoef(boolean_arr)[0,1] # compute sum of Pearson corr. coef.
+    pairs = random.sample(list(itertools.combinations(np.unique(spike_senders), 2)), num_pair)  # num_pair rand. pairs
+    for pair in pairs:
+        boolean_arr = np.zeros((2, int(record_time // bin_size)), dtype=bool)  # init spike train
+        for nid, neuron in enumerate(pair):  # iterate over two neurons in each pair
+            indices = np.where(neuron == spike_senders)[0]  # [12, 17, 21,...] indices of spike time of a current neuron
+            st = spike_times[indices] - 0.00001  # [0.9999, 18.999, 238.9999...] # dirty trick to make binning easier
+            boolean_arr[nid, np.int_(st//bin_size)] = True  # now the array is full with binned spike train
+        sum_pearson_coef += np.corrcoef(boolean_arr)[0,1]  # compute sum of Pearson corr. coef.
     return sum_pearson_coef / num_pair
 
 
@@ -49,7 +49,6 @@ def revised_local_variation(spike_times, spike_senders):
     :return: int, mean LvR value
     """
     neuron_list = np.unique(spike_senders)  # all unique gids of neurons
-    print("LvR;neuron_list: ", neuron_list[:10])
     lvr = np.zeros(neuron_list.shape[0])  # save lvr for each neuron
 
     for ni, neuron in enumerate(neuron_list):
@@ -88,36 +87,62 @@ def fano_factor(spike_times, record_time):
     bin_size = 10  # width of a  single bin in ms
     bins = np.arange(0, record_time+0.1, bin_size)  # define bin edges
     hist, edges = np.histogram(spike_times, bins=bins)
-    print("fano; hist: ", hist)
+    hist = hist * 1000/bin_size
     return np.var(hist) / np.mean(hist)
 
 
+def fano_factor_normed(spike_times, record_time):
+    bin_size = 10  # width of a single bin in ms
+    bins = np.arange(0, record_time + 0.1, bin_size)  # define bin edges
+    hist, edges = np.histogram(spike_times, bins=bins)
+    hist = hist * 1000 / bin_size
+    # compute firing rate using Gaussian kernel on top of histogram and save value for every tick (ms)
+    tick = 0.1
+    firingrate = gaussian_kde(dataset=hist).evaluate(np.arange(0, record_time+tick, tick))
+    return np.var(firingrate) / np.mean(firingrate)
+
+
+
+
 # V. classification
-def train(volt_values, target_output):
+def train(volt_values, target_output, split_ratio=0.5):
     """
     function to train a simple linear regression to fit the snapshot of membrane potential to binary classification
     using a ridge regression with cross-validation for regularization parameter.
     :param volt_values: np.arr, shape: len.of stim. presentation x N_E.
     snapshots of membrane potential at each stimuli offset.
     :param target_output: np.arr, shape: num. of stimuli x len. of stim. presentation. @sym_seq in the main.py
-    :return: list, each element saves the score for each module
+    :param split_ratio: float, percentage of the data to be used for the test
+    :return: list, saves the score for each module
     """
-    scores = []
+    print("before train: ", time.process_time())
+    scores = []  # array to save accuracy score for each module
+    MSE = []
     for mod_i in range(module_depth):
-        X = volt_values[:,mod_i,:]  # take only activities of exci. neurons. 50x8000
-        print("X in the training with shape timestep x neuronnum.: ", X.shape)
-        # split the data
-        split_ratio = 0.2  # how much percentage of the data will be used for the test
-        X_train, X_test, y_train, y_test = train_test_split(X, target_output, test_size=split_ratio)
+        # split the data into training and test sets
+        # X_train dim: #sample(timesteps) * (1-split_ratio) x #features(neurons)
+        # y_train dim: #sample * #classes(stimuli)
+        X_train, X_test, y_train, y_test = train_test_split(volt_values[:, mod_i, :],  # for each module
+                                                            np.transpose(np.int_(target_output)), test_size=split_ratio)
 
-        # fit
-        deltas = [0, 0.1, 1.0, 10.0, 100.0]  # regularization parameter
-        fit_model = lm.RidgeClassifierCV(alpha=deltas, fit_intercept=True)\
-            .fit(X=X_train, y=y_train) # linear ridge regression with cross-validation for regularization parameter
+        # linear ridge regression with cross-validation for regularization parameter
+        deltas = [0.1, 1.0, 5.0, 10.0, 50.0, 100.0]  # regularization parameter
+        fit_model = lm.RidgeClassifierCV(alphas=deltas, fit_intercept=True, store_cv_values=True)\
+            .fit(X=X_train, y=y_train)
 
-        # test
-        scores.append(fit_model.score(X_test, y_test))
-    return scores
+        # compute the output using the trained weight and test dataset with winner-take-all prediction (hard decision)
+        # predicted dim: 1 x #sample * split_ratio. Each element consists indices of predicted class.
+        predicted = fit_model.predict(X_test)
+        sum = 0
+        for sample_index, class_predicted in enumerate(predicted):
+            sum += y_test[sample_index, class_predicted]  # element will be 1 if correct and 0 if false
+        scores.append(sum/y_test.shape[0])  # append the accuracy score
+
+        # MSE
+        deltaindex = np.where(deltas == fit_model.alpha_)[0]  # pick delta which is actually chosen
+        MSE.append(fit_model.cv_values_[:, :, deltaindex])
+    print("after train: ", time.process_time())
+    return scores, MSE
 
 
 
@@ -154,12 +179,15 @@ def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot = 1000,
     :param plot_time: list, interval of time to plot the spikes
     :return: None
     """
-    spike_times = spike_times[spike_times < plot_time[1]]  #
-    spike_times = spike_times[spike_times > plot_time[0]]
+
+    spike_times = spike_times[spike_times <= plot_time[1]]
+    spike_times = spike_times[spike_times >= plot_time[0]]
     rand_choice = np.random.randint(0 +  N*layer, N*(layer+1), num_to_plot) # choose neurons to plot randomly
     mask = np.isin(spike_senders, rand_choice)
     pylab.scatter(spike_times[mask], spike_senders[mask], s=0.1, c="r")
     pylab.savefig(filename, bbox_to_inches="tight")
+
+
 
 
 def plot_result(filename, arr_to_plot, title, ylabel):
@@ -172,7 +200,7 @@ def plot_result(filename, arr_to_plot, title, ylabel):
     """
     pylab.figure()
     pylab.plot(arr_to_plot)
-    pylab.xticks(np.arange(arr_to_plot.shape[0]), ["M0","M1","M2","M3"])
+    pylab.xticks(np.arange(arr_to_plot.shape[0]), ["M0", "M1", "M2", "M3"])
     pylab.ylabel(ylabel)
     pylab.title(title)
     pylab.savefig(filename, bbox_to_inches="tight")

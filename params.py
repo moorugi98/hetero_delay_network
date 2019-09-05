@@ -1,7 +1,4 @@
 
-import nest
-
-
 # neuron params
 C_m = 250.0  # capacitance (pF)
 E_L = -70.0  # leak reversal potential (mV)
@@ -28,16 +25,8 @@ p_x_rest = 0.25 * epsilon  # same for other modules
 p_ff = 0.75 * epsilon  # feed-forward intra connection prob.
                            
 # models and default settings
-nest.SetDefaults("iaf_cond_exp", {"E_L":E_L, "C_m":C_m, "t_ref":tau_ref, "V_th":V_th, "V_reset":V_reset,
-                                  "E_ex":V_revr_E, "E_in":V_revr_I, "g_L":g_L, "tau_syn_ex":tau_E, "tau_syn_in":tau_I})
-model = "iaf_cond_exp"
-# nest.CopyModel("iaf_cond_exp", "iaf_exci", params={})    # !!!!!!!!!!!!!!! no difference??
-# model_exci = "iaf_exci" # model of excitatory neurons
-# nest.CopyModel("iaf_cond_exp", "iaf_inhi", params={})
-# model_inhi = "iaf_inhi" # model of inhibitory neurons
+neuron_model = "iaf_cond_exp"
 
-nest.CopyModel("static_synapse", "syn_exci", params={"delay":d, "weight":gbar_E})
-nest.CopyModel("static_synapse", "syn_inhi", params={"delay":d, "weight":gbar_I})
 
 
 # network params
@@ -62,7 +51,7 @@ K_x_rest = int(p_x_rest * N_X)
 # input stimuli
 num_stimulus = 10  # num. of stimuli
 delta = 3  # Poisson process rate factor for stimuli
-t_onset = 0.0
+t_onset = 1.0
 
 # stimuli onset time
 t_asterisk = 200.0  # how long each Poisson process lasts
