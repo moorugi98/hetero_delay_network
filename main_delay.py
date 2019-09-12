@@ -10,9 +10,9 @@ from params import *
 # depend on the machine, CHECK BEFOREHAND
 PATH = os.getcwd() + "/data/"
 # PATH = os.environ["TMPDIR"] + "/"
-num_process = 24
+num_process = 7
 num_threads = 2
-timeprint = False
+timeprint = True
 
 """
 select network type and stimuli onset
@@ -43,6 +43,25 @@ nest.CopyModel("static_synapse", "syn_inhi", params={"delay": d, "weight": gbar_
 
 
 
+def delay_dist(dist, params, num):
+    if dist == "unimodal":
+        mu = d
+        sigma = params
+        lower = 0
+        upper = 2*mu  # so that the shape is at least symmetric
+        return scipy.stats.truncnorm.rvs(
+            (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma, size=num)
+
+    elif dist == "two":
+        d_prime, proportion_d = list(params)[0], list(params)[1]
+        print("two discrete delays {},{} with proportion {}".format(d, d_prime, proportion_d))
+        indices = np.random.binomial(n=1, p=proportion_d, size=num)
+        return np.where(indices, d, d_prime)
+
+    elif dist == "bimodal":
+        d_prime, std_prime, std = list(params)[0], list(params)[1], list(params)[2]
+        print("bimodal distributed delays with peaks {}, {} and spread {}, {}".format(d, d_prime, std, std_prime))
+        dist_sample = np.random.normal(mu=d, sigma=std)
 
 
 """
@@ -130,6 +149,7 @@ for mod_i in range(module_depth):
                  conn_spec={"rule": "pairwise_bernoulli", "p": epsilon}, syn_spec={"model": "syn_exci"})
     nest.Connect(pop_inhi[mod_i], pop[mod_i],
                  conn_spec={"rule": "pairwise_bernoulli", "p": epsilon}, syn_spec={"model": "syn_inhi"})
+    nest.SetStatus(nest.GetConnections(pop[mod_i], pop[mod_i]), {"delay":delay_dict_intra})  # added line for hetero.
     # conn = nest.GetConnections(pop[mod_i], pop[mod_i])
     # nest.SetStatus([conn], {"delay":delay_dist(len(conn))})  # list comp. necessary for other dist.
 

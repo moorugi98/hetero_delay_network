@@ -19,16 +19,16 @@ def plot_V_m(filename, times, voltages, num_to_plot=5):
     :return: None
     """
     selected = np.random.choice(np.arange(0,N), num_to_plot) # for each module select num_to_plot neurons
-    fig, axes = pylab.subplots(nrows=num_to_plot+1, ncols=1)
+    fig, axes = plt.subplots(nrows=num_to_plot+1, ncols=1)
     for neuron_index in range(num_to_plot):
         axes[neuron_index].plot(times, voltages[:,neuron_index], "gray")
     axes[-1].plot(times, np.mean(voltages, axis=1), "blue") # plot the avg.
-    pylab.xlabel("time(ms)", fontsize=30)
-    pylab.ylabel("potential(mV)", fontsize=30)
-    pylab.savefig(filename, bbox_to_inches="tight")
+    plt.xlabel("time(ms)", fontsize=30)
+    plt.ylabel("potential(mV)", fontsize=30)
+    plt.savefig(filename, bbox_to_inches="tight")
 
 
-def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot = 1000, plot_time = [6000, 8000]):
+def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot = 100, plot_time = [6000, 8000]):
     """
     make a raster plot with @num_to_plot neurons
     :filename: str, name of the file to save
@@ -38,13 +38,14 @@ def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot = 1000,
     :param plot_time: list, interval of time to plot the spikes
     :return: None
     """
-
+    fig,(a0, a1)= plt.subplots(nrows=2, ncols=1, figsize=(8,5), gridspec_kw={'height_ratios': [3,1]})
     spike_times = spike_times[spike_times <= plot_time[1]]
     spike_times = spike_times[spike_times >= plot_time[0]]
-    rand_choice = np.random.randint(0 +  N*layer, N*(layer+1), num_to_plot) # choose neurons to plot randomly
+    rand_choice = np.random.randint(0 + N*layer, N*(layer+1), num_to_plot) # choose neurons to plot randomly
     mask = np.isin(spike_senders, rand_choice)
-    pylab.scatter(spike_times[mask], spike_senders[mask], s=0.1, c="r")
-    pylab.savefig(filename, bbox_to_inches="tight")
+    a0.scatter(spike_times[mask], spike_senders[mask], s=0.1, c="r")
+    a1.hist(spike_times, bins=5.0)
+    plt.savefig(filename, bbox_to_inches="tight")
 
 
 
@@ -56,12 +57,12 @@ def plot_result(filename, arr_to_plot, title, ylabel):
     :param title: str, the title of the plot
     :param ylabel: str, ylabel of the plot
     """
-    pylab.figure()
-    pylab.plot(arr_to_plot)
-    pylab.xticks(np.arange(arr_to_plot.shape[0]), ["M0", "M1", "M2", "M3"])
-    pylab.ylabel(ylabel)
-    pylab.title(title)
-    pylab.savefig(filename, bbox_to_inches="tight")
+    plt.figure()
+    plt.plot(arr_to_plot)
+    plt.xticks(np.arange(arr_to_plot.shape[0]), ["M0", "M1", "M2", "M3"])
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.savefig(filename, bbox_to_inches="tight")
 
 
 

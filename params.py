@@ -40,9 +40,9 @@ N_I_speci = int(epsilon * N_I)  # inhi.
 module_depth = 4
 
 # background noise
-v_x = 5.0 # intensity of a Poisson process
-N_X = N_E # num. of background neurons
-K_x_0 = int(p_x_0 * N_X) # num. of synapses for background noise for the input module
+v_x = 5.0  # intensity of a Poisson process
+N_X = N_E  # num. of background neurons
+K_x_0 = int(p_x_0 * N_X)  # num. of synapses for background noise for the input module
 K_x_rest = int(p_x_rest * N_X)
 #
 # # inter-module connection
