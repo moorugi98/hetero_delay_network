@@ -6,7 +6,7 @@ for network in "${configlist[@]}"; do
   for intra_params in {0.01 0.05 0.1 0.2 0.5 1.0}; do
   ####cp /users/kang/data/*$network* ${TMPDIR} maybe include them inside the wrapper
   ####echo ${TMPDIR}
-  sbatch $FLAGS --wrap="python measures.py $network 10000 unimodal null $intra_params 0"
+  sbatch $FLAGS --wrap="python /users/kang/measures.py $network 10000 unimodal null $intra_params 0"
   ####cp ${TMPDIR}/* /users/kang/data/summary/
   done
 done

@@ -1,5 +1,4 @@
 import sys
-import os
 import time
 
 import numpy as np
@@ -8,13 +7,6 @@ import matplotlib.pyplot as plt
 
 from helpers import pairwise_corr, revised_local_variation, avg_firing_rate, fano_factor, load_data
 from params import *
-
-
-PATH = os.getcwd() + "/data/raw/hetero/unimodal/intra/"
-# PATH = os.getcwd() + "/data/dummy/"
-print("path: ", PATH)
-
-
 
 """
 parse the parameters and init. data structures
@@ -48,9 +40,9 @@ for runindex in range(runnum):
     spike_times = []
     spike_senders = []
     for mod_i in range(module_depth):
-        # TODO
-        # change the naming convention to be general
-        expression = "spike_{}_run={}_std={}-4000{}-*.dat".format(network_mode, delay_intra_param, runindex, mod_i + 1)
+        expression = "spike_run={}_{}_intra={}{}_inter={}{}-4000{}-*.dat".\
+            format(runindex, network_mode, delay_mode_intra, delay_intra_param, delay_mode_inter, delay_inter_param, mod_i)
+        print("expression: ", expression)
         spike_arr = np.vstack(np.array(load_data(PATH, expression)))
         spike_times.append(spike_arr[:, 1])
         spike_senders.append(spike_arr[:, 0])
@@ -105,7 +97,7 @@ def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot=100, pl
     rand_choice = np.random.randint(0 + N * layer, N * (layer + 1), num_to_plot)
     mask_ids = np.isin(spike_senders, rand_choice)  # choose neurons to plot randomly
     a0.scatter(spike_times[mask_time & mask_ids], spike_senders[mask_time & mask_ids], s=0.1, c="r")
-    a0.set(xlabel="time (ms)")
+    a1.set(xlabel="time (ms)")
     bin_size = 5  # in msec
     bins = np.arange(plot_time[0], plot_time[1]+0.00066, bin_size)
     heights, edges = np.histogram(spike_times, bins)

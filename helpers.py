@@ -1,7 +1,4 @@
-import sys
-import os
 import glob
-import time
 import itertools
 import random
 
@@ -34,7 +31,7 @@ def pairwise_corr(spike_times, spike_senders, record_time):
     for pair in pairs:
         boolean_arr = np.zeros((2, int(record_time // bin_size)), dtype=bool)  # init spike train
         for nid, neuron in enumerate(pair):  # iterate over two neurons in each pair
-            indices = np.where(neuron == np.array(spike_senders))[0]  # [12, 17, 21,...] indices of spike time of a current neuron
+            indices = np.where(neuron == np.array(spike_senders))[0]  # indices of spike time of a current neuron
             st = spike_times[indices] - 0.00001  # [0.9999, 18.999, 238.9999...] # dirty trick to make binning easier
             boolean_arr[nid, np.int_(st//bin_size)] = True  # now the array is full with binned spike train
         sum_pearson_coef += np.corrcoef(boolean_arr)[0,1]  # compute sum of Pearson corr. coef.
@@ -44,7 +41,7 @@ def pairwise_corr(spike_times, spike_senders, record_time):
 # II. LvR
 def revised_local_variation(spike_times, spike_senders):
     """
-    compute the revised_local_variation (LvR) suggested by Shinomoto, 2009. neuron-wise and return the avg. value
+    compute the revised_local_variation (LvR) suggested by (Shinomoto, 2009) neuron-wise and return the avg. value
     :param spike_times: list, nest.GetStatus(spike_detector, ["event"])[0]["times"]
     :param spike_senders: list, nest.GetStatus(spike_detector, ["event"])[0]["senders"]
     :return: int, mean LvR value
@@ -106,31 +103,35 @@ def train(volt_values, target_output, split_ratio=0.2):
     :param split_ratio: float, percentage of the data to be used for the test
     :return: list, saves the score for each module
     """
-    scores = np.zeros(module_depth) # array to save accuracy score for each module
+    scores = np.zeros(module_depth)  # array to save accuracy score for each module
     MSE = np.zeros(module_depth)
     for mod_i in range(module_depth):
         # split the data into training and test sets
-        # X_train dim: #sample(timesteps) * (1-split_ratio) x #features(neurons)
-        # y_train dim: #sample * #classes(stimuli)
+        # X_train dim: #train_sample(#screenshots) x #features(#neurons)
+        # y_train dim: #train_sample * #classes(stimuli)
         X_train, X_test, y_train, y_test = train_test_split(volt_values[:, mod_i, :],  # for each module
                                                             np.transpose(np.int_(target_output)), test_size=split_ratio)
+        print("x-train: ", X_train.shape, "y-train: ", y_train.shape)  # debug message
 
         # linear ridge regression with cross-validation for regularization parameter
-        deltas = [0.1, 1.0, 5.0, 10.0, 50.0, 100.0]  # regularization parameter
+        deltas = [0.01, 0.1, 1, 10, 100]  # regularization parameter # TODO: maybe delta values are inappro.?
         fit_model = lm.RidgeClassifierCV(alphas=deltas, fit_intercept=True, store_cv_values=True)\
             .fit(X=X_train, y=y_train)
 
         # compute the output using the trained weight and test dataset with winner-take-all prediction (hard decision)
-        # predicted dim: 1 x #sample * split_ratio. Each element consists indices of predicted class.
+        # predicted dim: 1 x #test sample. Each element consists indices of predicted class.
         predicted = fit_model.predict(X_test)
         sum = 0
         for sample_index, class_predicted in enumerate(predicted):
             sum += y_test[sample_index, class_predicted]  # element will be 1 if correct and 0 if false
         scores[mod_i] = sum / y_test.shape[0]  # append the accuracy score
+        print("weights dim. 1000 x 8000: ", fit_model.coef_[:4, :10])
+        print("intercepts dim. 1000: ", fit_model.intercept_[:10])
+        print("reg.params.: ", fit_model.alpha_)
 
         # MSE
         deltaindex = np.where(deltas == fit_model.alpha_)[0]  # pick delta which is actually chosen
-        MSE[mod_i] = np.mean(fit_model.cv_values_[:, :, deltaindex], axis=(0,1,2))
+        MSE[mod_i] = np.mean(fit_model.cv_values_[:, :, deltaindex], axis=(0,1,2))  # average over all samples & feats.
     return scores, MSE
 
 

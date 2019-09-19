@@ -1,20 +1,10 @@
 import sys
-import os
 import time
 
 import numpy as np
-import sklearn.linear_model as lm
-from sklearn.model_selection import train_test_split
 
 from helpers import train, load_data, reshape_arr, reformat_df
 from params import *
-
-# PATH = os.getcwd() + "/data/raw/verylong/"
-PATH = os.getcwd() + "/data/dummy/"
-print("path: ", PATH)
-
-
-
 
 
 
@@ -43,8 +33,14 @@ load all raw data in appropriate formats
 """
 for runindex in range(runnum):
     # membrane potential
-    expression = "volt_{}_run={}-*.dat".format(network_mode, runindex)
+    expression = "volt_run={}_{}_intra={}{}_inter={}{}*.dat"\
+        .format(runindex, network_mode, delay_mode_intra, delay_intra_param, delay_mode_inter, delay_inter_param)
+    myarr = np.array(load_data(PATH, expression))
+    print("how's my array: ", myarr.shape)
+    np.save("myarr", myarr)
+    exit()
     volt_values = reshape_arr(np.hstack(np.array(load_data(PATH, expression))))  # samplenum x mod_i x neuronnum
+    print("data is loaded: ", time.process_time())
 
 
 
