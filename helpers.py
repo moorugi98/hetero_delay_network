@@ -114,7 +114,7 @@ def train(volt_values, target_output, split_ratio=0.2):
         print("x-train: ", X_train.shape, "y-train: ", y_train.shape)  # debug message
 
         # linear ridge regression with cross-validation for regularization parameter
-        deltas = [0.01, 0.1, 1, 10, 100]  # regularization parameter # TODO: maybe delta values are inappro.?
+        deltas = [0.01, 0.1, 1, 10, 100]  # regularization parameter
         fit_model = lm.RidgeClassifierCV(alphas=deltas, fit_intercept=True, store_cv_values=True)\
             .fit(X=X_train, y=y_train)
 
@@ -142,10 +142,13 @@ def load_data(PATH, filename):
     :return: list
     """
     all_files = glob.glob(os.path.join(PATH, filename))
-    myl = []
-    for f in all_files:
-        myl.append(np.loadtxt(f))  # load all files from different kernels to one data structure
-    return myl
+    # myl = []
+    # for f in all_files:
+    #     myl.append(np.loadtxt(f))  # load all files from different kernels to one data structure
+    # return myl
+    arrays = [np.loadtxt(f) for f in all_files]
+    return np.concatenate(arrays, axis=0)
+
 
 
 def reshape_arr(flat):

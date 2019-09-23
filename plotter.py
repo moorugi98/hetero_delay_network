@@ -9,7 +9,7 @@ import seaborn as sns
 
 from params import *
 
-PATH = os.getcwd() + "/data/sum/"
+PATH = os.getcwd() + '/data/sum/measures_intra=unimodal_inter=null.p'
 
 def plot_V_m(filename, times, voltages, num_to_plot=5):
     """
@@ -76,15 +76,15 @@ def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot=100, pl
 
 ######################
 
-"""
-load the data
-"""
-def concat_files(expression):
-    path = PATH
-    all_files = glob.glob(os.path.join(path, expression))
-    print(all_files)
-    df_from_each_file = (pd.read_pickle(f) for f in all_files)  # use generator to give out data frame each time
-    return pd.concat(df_from_each_file, ignore_index=False)
+# """
+# load the data
+# """
+# def concat_files(expression):
+#     path = PATH
+#     all_files = glob.glob(os.path.join(path, expression))
+#     print(all_files)
+#     df_from_each_file = (pd.read_pickle(f) for f in all_files)  # use generator to give out data frame each time
+#     return pd.concat(df_from_each_file, ignore_index=False)
 
 
 
@@ -92,7 +92,8 @@ def concat_files(expression):
 metric figures
 """
 
-measures = concat_files("measures*.p")
+# measures = concat_files("measures*.p")
+measures = pd.read_pickle(PATH)
 
 metrics = measures.columns[2:]  # 4 different metrics
 xticks = ["M0", "M1", "M2", "M3"]  # xlabels

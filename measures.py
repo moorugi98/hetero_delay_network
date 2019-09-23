@@ -41,12 +41,17 @@ for runindex in range(runnum):
     spike_senders = []
     for mod_i in range(module_depth):
         expression = "spike_run={}_{}_intra={}{}_inter={}{}-4000{}-*.dat".\
-            format(runindex, network_mode, delay_mode_intra, delay_intra_param, delay_mode_inter, delay_inter_param, mod_i)
+            format(runindex, network_mode, delay_mode_intra, delay_intra_param, delay_mode_inter, delay_inter_param, mod_i+1)
         print("expression: ", expression)
         spike_arr = np.vstack(np.array(load_data(PATH, expression)))
         spike_times.append(spike_arr[:, 1])
         spike_senders.append(spike_arr[:, 0])
-
+        # spike_times.append(np.load(PATH + 'spiketimes_run={}_{}_intra={}{}_inter={}{}.npy'.
+        # format(runindex, network_mode, delay_mode_intra, delay_intra_param, delay_mode_inter, delay_inter_param),
+        #                            allow_pickle=True)[mod_i])
+        # spike_senders.append(np.load(PATH + 'spikesenders_run={}_{}_intra={}{}_inter={}{}.npy'.
+        # format(runindex, network_mode, delay_mode_intra, delay_intra_param, delay_mode_inter, delay_inter_param),
+        #                              allow_pickle=True)[mod_i])
     print("data is lock & loaded: ", time.process_time())
 
 

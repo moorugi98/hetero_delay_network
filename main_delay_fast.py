@@ -4,8 +4,9 @@ import numpy as np
 import nest
 
 from params import *
+from helpers import reshape_arr
 
-PATH= os.getcwd()
+
 
 """
 select network type and stimuli onset
@@ -26,8 +27,7 @@ print("simulate for {} ms with {} ms extra onset time".format(sim_time, t_onset)
 set the network and simulation environment
 """
 nest.SetKernelStatus(params={"total_num_virtual_procs": num_process, "local_num_threads": num_threads,
-                             "overwrite_files": True, "data_path": PATH,
-                             "print_time": timeprint})
+                             "overwrite_files": True, "print_time": timeprint})
 nest.SetDefaults("iaf_cond_exp", {"E_L": E_L, "C_m": C_m, "t_ref": tau_ref, "V_th": V_th, "V_reset": V_reset,
                                   "E_ex": V_revr_E, "E_in": V_revr_I, "g_L": g_L, "tau_syn_ex": tau_E,
                                   "tau_syn_in": tau_I})
@@ -94,10 +94,8 @@ for mod_i in range(module_depth):  # don't use the same for loops to avoid gid g
     # spike detector for each module. Record only for 10 seconds
     spike_device.append(
         nest.Create("spike_detector", params={"withgid": True, "withtime": True, "start": t_onset,
-                                              "stop": 10000 + t_onset, "binary": True, "to_memory": False,
-                                              "to_file": True, "file_extension": "dat",
-                                              "label": "spike_run={}_{}_intra={}{}_inter={}{}".
-                    format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1])}))
+                                              "stop": endspiketime + t_onset, "binary": True, "to_memory": True,
+                                              "to_file": False}))
     nest.Connect(pop[mod_i], spike_device[mod_i], conn_spec={"rule": "all_to_all"})  # connect det. with neurons
 
 
@@ -118,12 +116,12 @@ intra-module recurrent connections. Every possible connection is connected with 
 """
 for mod_i in range(module_depth):
     nest.Connect(pop_exci[mod_i], pop[mod_i],
-                 conn_spec={"rule": "pairwise_bernoulli", "p": epsilon}, syn_spec={"model": "syn_exci"})
-                                                                                   #"delay": delay_dict[0]})
+                 conn_spec={"rule": "pairwise_bernoulli", "p": epsilon}, syn_spec={"model": "syn_exci",
+                                                                                   "delay": delay_dict[0]})
 
     nest.Connect(pop_inhi[mod_i], pop[mod_i],
-                 conn_spec={"rule": "pairwise_bernoulli", "p": epsilon}, syn_spec={"model": "syn_inhi"})
-                                                                                   #"delay": delay_dict[0]})
+                 conn_spec={"rule": "pairwise_bernoulli", "p": epsilon}, syn_spec={"model": "syn_inhi",
+                                                                                   "delay": delay_dict[0]})
 
 
 
@@ -132,11 +130,9 @@ if stimuli is on, create input stimuli and corresponding poisson gen. and connec
 """
 if (network_mode == "random") or (network_mode == "topo"):
     # voltmeter for the whole network, record at every stimuli offset time
-    voltage_device = nest.Create("voltmeter", params={"withtime": False, "withgid": False,
-                                                      "interval": t_asterisk, "start": t_onset, "to_file": True,
-                                                      "file_extension": "dat", "to_memory": True,
-                                                      "label": "volt_run={}_{}_intra={}{}_inter={}{}".
-                    format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1])})
+    voltage_device = nest.Create("voltmeter", params={"withtime": False, "withgid": True,
+                                                      "interval": t_asterisk, "start": t_onset, "to_file": False,
+                                                      "to_memory": True})
     # connect voltmeter to exci. neurons
     [nest.Connect(voltage_device, epop_module, conn_spec={"rule": "all_to_all"}) for epop_module in pop_exci]
 
@@ -168,8 +164,8 @@ if (network_mode == "noise") or (network_mode == "random"):
     # inter-module feed-forward connections. Every exci. neuron projects to the next module with prob. @p_ff(=0.075)
     for mod_i in range(module_depth - 1):
         nest.Connect(pop_exci[mod_i], pop[mod_i + 1],
-                     conn_spec={"rule": "pairwise_bernoulli", "p": p_ff}, syn_spec={"model": "syn_exci"})
-                                                                                    #"delay": delay_dict[1]})
+                     conn_spec={"rule": "pairwise_bernoulli", "p": p_ff}, syn_spec={"model": "syn_exci",
+                                                                                    "delay": delay_dict[1]})
 
     # connect stimuli generators to random sub-populations
     if network_mode == "random":
@@ -237,5 +233,30 @@ simulate with extra time for stimuli to be set
 """
 nest.Simulate(sim_time + t_onset)
 
+
+spike_times = []
+spike_senders = []
+for mod_i in range(module_depth):
+    data_spike = nest.GetStatus(spike_device[mod_i], "events")[0]
+    spike_times.append(data_spike["times"])  # list of spike times with each component repr. layer
+    spike_senders.append(data_spike["senders"])
+    np.save(PATH + "spiketimes_run={}_{}_intra={}{}_inter={}{}.npy".
+            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+               np.array(spike_times))
+    np.save(PATH + "spikesenders_run={}_{}_intra={}{}_inter={}{}.npy".
+            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+               np.array(spike_senders))
+
+
+
+
 if (network_mode=="random") or (network_mode=="topo"):
-    np.savetxt(PATH + "stimuli_{}_run={}".format(network_mode, runindex), sym_seq)
+    np.savetxt(PATH + "stimuli_run={}_{}_intra={}{}_inter={}{}".
+               format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]), sym_seq)
+
+    data_volt = nest.GetStatus(voltage_device, "events")[0]  # data from voltmeter
+    volt_values = data_volt["V_m"]
+    volt_values = reshape_arr(volt_values)
+    np.save(PATH + "volt_run={}_{}_intra={}{}_inter={}{}.npy".
+            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+            volt_values)
