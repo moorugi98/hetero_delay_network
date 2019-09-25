@@ -1,3 +1,8 @@
+"""
+Define all the necessary functions used here to avoid scripts getting messy
+"""
+
+
 import glob
 import itertools
 import random
@@ -72,7 +77,6 @@ def avg_firing_rate(spike_senders, record_time, N):
     :param N: int, num. of neurons to record from
     :return: int, avg. firing rate
     """
-
     record_time = record_time / 1000
     return len(spike_senders) / (record_time * N)
 
@@ -95,7 +99,7 @@ def fano_factor(spike_times, record_time, N):
 
 def train(volt_values, target_output, split_ratio=0.2):
     """
-    function to train a simple linear regression to fit the snapshot of membrane potential to binary classification
+    function to train a simple linear regression to fit the snapshot of membrane potential (state matrix) to binary classification
     using a ridge regression with cross-validation for regularization parameter.
     :param volt_values: np.arr, shape: len.of stim. presentation x N_E.
     snapshots of membrane potential at each stimuli offset.
@@ -107,27 +111,28 @@ def train(volt_values, target_output, split_ratio=0.2):
     MSE = np.zeros(module_depth)
     for mod_i in range(module_depth):
         # split the data into training and test sets
-        # X_train dim: #train_sample(#screenshots) x #features(#neurons)
+        # x_train dim: #train_sample(#screenshots) x #features(#neurons)
         # y_train dim: #train_sample * #classes(stimuli)
-        X_train, X_test, y_train, y_test = train_test_split(volt_values[:, mod_i, :],  # for each module
+        x_train, x_test, y_train, y_test = train_test_split(volt_values[:, mod_i, :],  # for each module
                                                             np.transpose(np.int_(target_output)), test_size=split_ratio)
-        print("x-train: ", X_train.shape, "y-train: ", y_train.shape)  # debug message
+        print("x-train: ", x_train.shape, "y-train: ", y_train.shape)  # TODO: debug message
 
         # linear ridge regression with cross-validation for regularization parameter
-        deltas = [0.01, 0.1, 1, 10, 100]  # regularization parameter
+        # deltas = [0.01, 0.1, 1, 10, 100]  # regularization parameter
+        deltas = [1e20, 1e40, 1e60, 1e80, 1e100, 1e120, 1e140, 1e160, 1e180]
         fit_model = lm.RidgeClassifierCV(alphas=deltas, fit_intercept=True, store_cv_values=True)\
-            .fit(X=X_train, y=y_train)
+            .fit(X=x_train, y=y_train)
 
-        # compute the output using the trained weight and test dataset with winner-take-all prediction (hard decision)
+        # use the trained weight to predict the class of @y_test. Use WTA operation, without giving confidence level
         # predicted dim: 1 x #test sample. Each element consists indices of predicted class.
-        predicted = fit_model.predict(X_test)
-        sum = 0
+        predicted = fit_model.predict(x_test) # dim: sample num x 1. Each entry indicates that n-th class is predicted.
+        sum = 0  # count how many samples of y_test gets classified correctly
         for sample_index, class_predicted in enumerate(predicted):
-            sum += y_test[sample_index, class_predicted]  # element will be 1 if correct and 0 if false
-        scores[mod_i] = sum / y_test.shape[0]  # append the accuracy score
+            sum += y_test[sample_index, class_predicted]  # entry of y_test are 0 and 1
+        scores[mod_i] = sum / y_test.shape[0]  # normalize to 1 and save the accuracy for each module
         print("weights dim. 1000 x 8000: ", fit_model.coef_[:4, :10])
         print("intercepts dim. 1000: ", fit_model.intercept_[:10])
-        print("reg.params.: ", fit_model.alpha_)
+        print("reg.params.: ", fit_model.alpha_) # shit doesn't work
 
         # MSE
         deltaindex = np.where(deltas == fit_model.alpha_)[0]  # pick delta which is actually chosen
@@ -135,20 +140,19 @@ def train(volt_values, target_output, split_ratio=0.2):
     return scores, MSE
 
 
-def load_data(PATH, filename):
-    """
-    load all the data with a given filename inside a PATH in a single list
-    :param filename: str, names of the files to load. Using RegEx is recommended.
-    :return: list
-    """
-    all_files = glob.glob(os.path.join(PATH, filename))
-    # myl = []
-    # for f in all_files:
-    #     myl.append(np.loadtxt(f))  # load all files from different kernels to one data structure
-    # return myl
-    arrays = [np.loadtxt(f) for f in all_files]
-    return np.concatenate(arrays, axis=0)
-
+# def load_data(PATH, filename):
+#     """
+#     load all the data with a given filename inside a PATH in a single list
+#     :param filename: str, names of the files to load. Using RegEx is recommended.
+#     :return: list
+#     """
+#     all_files = glob.glob(os.path.join(PATH, filename))
+#     # myl = []
+#     # for f in all_files:
+#     #     myl.append(np.loadtxt(f))  # load all files from different kernels to one data structure
+#     # return myl
+#     arrays = [np.loadtxt(f) for f in all_files]
+#     return np.concatenate(arrays, axis=0)
 
 
 def reshape_arr(flat):
@@ -164,3 +168,38 @@ def reformat_df(network_mode, nparr):
     df_new = pd.melt((pd.DataFrame(nparr, dtype=float)), var_name="module index")
     df_new["network type"] = network_mode
     return df_new
+
+
+def plot_V_m(filename, times, voltages, num_to_plot=5):
+    """
+    plot the membrane potetinal time trace by selecting random neurons and plot the avg. at the end.
+    :filename: str, name of the file to save
+    :param times: list, nest.GetStatus(voltage_detector, ["event"])[0]["times"] and reshaped to avoid repetitiveness
+    :param voltages: list, nest.GetStatus(voltage_detector, ["event"])[0]["V_m"]
+    :param num_to_plot: int, select how much neurons should be plotted from the population
+    :return: None
+    """
+    selected = np.random.choice(np.arange(0,N), num_to_plot) # for each module select num_to_plot neurons
+    fig, axes = plt.subplots(nrows=num_to_plot+1, ncols=1)
+    for neuron_index in range(num_to_plot):
+        axes[neuron_index].plot(times, voltages[:,neuron_index], "gray")
+    axes[-1].plot(times, np.mean(voltages, axis=1), "blue") # plot the avg.
+    plt.xlabel("time(ms)", fontsize=30)
+    plt.ylabel("potential(mV)", fontsize=30)
+    plt.savefig(filename, bbox_to_inches="tight")
+
+
+# def plot_result(filename, arr_to_plot, title, ylabel):
+#     """
+#     helper function to plot the result of various measures
+#     :filename: str, name of the file to save
+#     :param arr_to_plot: np.arr, the data to plot
+#     :param title: str, the title of the plot
+#     :param ylabel: str, ylabel of the plot
+#     """
+#     plt.figure()
+#     plt.plot(arr_to_plot)
+#     plt.xticks(np.arange(arr_to_plot.shape[0]), ["M0", "M1", "M2", "M3"])
+#     plt.ylabel(ylabel)
+#     plt.title(title)
+#     plt.savefig(filename, bbox_to_inches="tight")

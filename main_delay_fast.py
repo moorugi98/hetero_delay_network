@@ -90,13 +90,15 @@ for mod_i in range(module_depth):  # iterate over different modules
     pop.append(current_mod_pop)  # whole population for each module
     nest.SetStatus(current_mod_pop, "V_m",
                    np.random.uniform(E_L, V_th, len(current_mod_pop)))  # random init. membrane potential
-for mod_i in range(module_depth):  # don't use the same for loops to avoid gid getting mixed
-    # spike detector for each module. Record only for 10 seconds
-    spike_device.append(
-        nest.Create("spike_detector", params={"withgid": True, "withtime": True, "start": t_onset,
-                                              "stop": endspiketime + t_onset, "binary": True, "to_memory": True,
-                                              "to_file": False}))
-    nest.Connect(pop[mod_i], spike_device[mod_i], conn_spec={"rule": "all_to_all"})  # connect det. with neurons
+# I run short simulations for recording spikes and long simulations for recording voltages
+if sim_time < 99999:
+    for mod_i in range(module_depth):  # don't use the same for loops to avoid gid getting mixed
+        # spike detector for each module. Record only for 10 seconds
+        spike_device.append(
+            nest.Create("spike_detector", params={"withgid": True, "withtime": True, "start": t_onset,
+                                                  "stop": endspiketime + t_onset, "binary": True, "to_memory": True,
+                                                  "to_file": False}))
+        nest.Connect(pop[mod_i], spike_device[mod_i], conn_spec={"rule": "all_to_all"})  # connect det. with neurons
 
 
 
@@ -128,11 +130,11 @@ for mod_i in range(module_depth):
 """
 if stimuli is on, create input stimuli and corresponding poisson gen. and connect them to the input module
 """
-if (network_mode == "random") or (network_mode == "topo"):
-    # voltmeter for the whole network, record at every stimuli offset time
-    voltage_device = nest.Create("voltmeter", params={"withtime": False, "withgid": True,
-                                                      "interval": t_asterisk, "start": t_onset, "to_file": False,
-                                                      "to_memory": True})
+# long simulations
+if ((network_mode == "random") or (network_mode == "topo")) and (sim_time > 99999):
+    # voltmeter for the whole network, record when the stimuli changes
+    voltage_device = nest.Create("voltmeter", params={'withgid': True, "interval": t_asterisk, "start": t_onset,
+                                                      "to_file": False, "to_memory": True})
     # connect voltmeter to exci. neurons
     [nest.Connect(voltage_device, epop_module, conn_spec={"rule": "all_to_all"}) for epop_module in pop_exci]
 
@@ -234,29 +236,44 @@ simulate with extra time for stimuli to be set
 nest.Simulate(sim_time + t_onset)
 
 
-spike_times = []
-spike_senders = []
-for mod_i in range(module_depth):
-    data_spike = nest.GetStatus(spike_device[mod_i], "events")[0]
-    spike_times.append(data_spike["times"])  # list of spike times with each component repr. layer
-    spike_senders.append(data_spike["senders"])
-    np.save(PATH + "spiketimes_run={}_{}_intra={}{}_inter={}{}.npy".
-            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
-               np.array(spike_times))
-    np.save(PATH + "spikesenders_run={}_{}_intra={}{}_inter={}{}.npy".
-            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
-               np.array(spike_senders))
+if sim_time < 99999:
+    spike_times = []
+    spike_senders = []
+    for mod_i in range(module_depth):
+        data_spike = nest.GetStatus(spike_device[mod_i], "events")[0]
+        spike_times.append(data_spike["times"])  # list of spike times with each component repr. layer
+        spike_senders.append(data_spike["senders"])
+        np.save(PATH + "spiketimes_run={}_{}_intra={}{}_inter={}{}.npy".
+                format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+                   np.array(spike_times))
+        np.save(PATH + "spikesenders_run={}_{}_intra={}{}_inter={}{}.npy".
+                format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+                   np.array(spike_senders))
 
 
 
 
-if (network_mode=="random") or (network_mode=="topo"):
-    np.savetxt(PATH + "stimuli_run={}_{}_intra={}{}_inter={}{}".
+if ((network_mode == "random") or (network_mode == "topo")) and (sim_time > 9999):
+    np.save(PATH + "stimuli_run={}_{}_intra={}{}_inter={}{}.npy".
                format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]), sym_seq)
 
     data_volt = nest.GetStatus(voltage_device, "events")[0]  # data from voltmeter
-    volt_values = data_volt["V_m"]
-    volt_values = reshape_arr(volt_values)
-    np.save(PATH + "volt_run={}_{}_intra={}{}_inter={}{}.npy".
+    # volt_gids = reshape_arr(data_volt['senders'])
+    # volt_values = reshape_arr(data_volt["V_m"])
+    gids = data_volt['senders']
+    vms = data_volt['V_m']
+    np.save(PATH + "flatgids_run={}_{}_intra={}{}_inter={}{}.npy".
+            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+            gids)
+    np.save(PATH + "flatvms_run={}_{}_intra={}{}_inter={}{}.npy".
+            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+            vms)
+
+    volt_values = np.zeros((module_depth, N_E, int(sim_time/t_asterisk)))
+    for module_i in range(4):
+        for nindex, nid in enumerate(range(1 + N * module_i, 1 + N * module_i + N_E)):
+            volt_values[module_i, nindex] = vms[np.where(gids == nid)[0]]
+    np.save(PATH + "voltvalues_run={}_{}_intra={}{}_inter={}{}.npy".
             format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
             volt_values)
+

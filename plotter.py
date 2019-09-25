@@ -1,3 +1,7 @@
+"""
+Used to make a summary plot of network properties and classification accuracy
+"""
+
 import glob
 import os
 import sys
@@ -9,82 +13,10 @@ import seaborn as sns
 
 from params import *
 
-PATH = os.getcwd() + '/data/sum/measures_intra=unimodal_inter=null.p'
-
-def plot_V_m(filename, times, voltages, num_to_plot=5):
-    """
-    plot the membrane potetinal time trace by selecting random neurons and plot the avg. at the end.
-    :filename: str, name of the file to save
-    :param times: list, nest.GetStatus(voltage_detector, ["event"])[0]["times"] and reshaped to avoid repetitiveness
-    :param voltages: list, nest.GetStatus(voltage_detector, ["event"])[0]["V_m"]
-    :param num_to_plot: int, select how much neurons should be plotted from the population
-    :return: None
-    """
-    selected = np.random.choice(np.arange(0,N), num_to_plot) # for each module select num_to_plot neurons
-    fig, axes = plt.subplots(nrows=num_to_plot+1, ncols=1)
-    for neuron_index in range(num_to_plot):
-        axes[neuron_index].plot(times, voltages[:,neuron_index], "gray")
-    axes[-1].plot(times, np.mean(voltages, axis=1), "blue") # plot the avg.
-    plt.xlabel("time(ms)", fontsize=30)
-    plt.ylabel("potential(mV)", fontsize=30)
-    plt.savefig(filename, bbox_to_inches="tight")
-
-
-def plot_raster(filename, spike_times, spike_senders, layer, num_to_plot=100, plot_time=(6000, 8000)):
-    """
-    make a raster plot with @num_to_plot neurons
-    :filename: str, name of the file to save
-    :param spike_times: list, nest.GetStatus(spike_detector, ["event"])[0]["times"]
-    :param spike_senders: list, nest.GetStatus(spike_detector, ["event"])[0]["senders"]
-    :param num_to_plot: int, num of neurons to plot, default = 1000
-    :param plot_time: list, interval of time to plot the spikes
-    :return: None
-    """
-    fig,(a0, a1)= plt.subplots(nrows=2, ncols=1, figsize=(8,5), gridspec_kw={'height_ratios': [3,1]})
-    mask_time = (spike_times <= plot_time[1]) & (spike_times >= plot_time[0])  # choose time to plot
-    rand_choice = np.random.randint(0 + N * layer, N * (layer + 1), num_to_plot)
-    mask_ids = np.isin(spike_senders, rand_choice)  # choose neurons to plot randomly
-    a0.scatter(spike_times[mask_time & mask_ids], spike_senders[mask_time & mask_ids], s=0.1, c="r")
-    a0.set(xlabel="time (ms)")
-    bin_size = 5  # in msec
-    bins = np.arange(plot_time[0], plot_time[1]+0.00066, bin_size)
-    heights, edges = np.histogram(spike_times, bins)
-    normed = (heights/N)*(1000/bin_size)
-    a1.bar(bins[:-1], normed, width=10.0, color="orange", align="edge")
-    plt.savefig(filename, bbox_to_inches="tight")
-
-
-
-# def plot_result(filename, arr_to_plot, title, ylabel):
-#     """
-#     helper function to plot the result of various measures
-#     :filename: str, name of the file to save
-#     :param arr_to_plot: np.arr, the data to plot
-#     :param title: str, the title of the plot
-#     :param ylabel: str, ylabel of the plot
-#     """
-#     plt.figure()
-#     plt.plot(arr_to_plot)
-#     plt.xticks(np.arange(arr_to_plot.shape[0]), ["M0", "M1", "M2", "M3"])
-#     plt.ylabel(ylabel)
-#     plt.title(title)
-#     plt.savefig(filename, bbox_to_inches="tight")
-
-
-
-
-
-######################
-
-# """
-# load the data
-# """
-# def concat_files(expression):
-#     path = PATH
-#     all_files = glob.glob(os.path.join(path, expression))
-#     print(all_files)
-#     df_from_each_file = (pd.read_pickle(f) for f in all_files)  # use generator to give out data frame each time
-#     return pd.concat(df_from_each_file, ignore_index=False)
+# parameters has to be tweaked manually
+intra_mode = 'unimodal'
+inter_mode = 'null'
+PATH = os.getcwd() + '/data/sum/measures_intra={}_inter={}.p'.format(intra_mode, inter_mode)
 
 
 
@@ -94,17 +26,31 @@ metric figures
 
 # measures = concat_files("measures*.p")
 measures = pd.read_pickle(PATH)
+metrics = measures.columns[2:]  # 4 different metrics, first two columns are indices
+xticks = ["M0", "M1", "M2", "M3"]  # xlabels are module indices
+ylabels = ["Pearson CC", "LvR", "spikes/sec", "Fano factor"]  # ylabels are units of metrics
 
-metrics = measures.columns[2:]  # 4 different metrics
-xticks = ["M0", "M1", "M2", "M3"]  # xlabels
-ylabels = ["Pearson CC", "LvR", "spikes/sec", "Fano factor"]  # ylabels
+fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(10, 3))
 
-fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(24, 4))
-for measure_i in range(4):
-    sns.lineplot(x="module index", y=metrics[measure_i], hue="network type", style="intra params",data=measures, ci="sd", ax=axes[measure_i])
+for measure_i in range(3):
+    sns.lineplot(x="module index", y=metrics[measure_i], hue="network type", style="intra params", data=measures,
+                 ci="sd", ax=axes[measure_i], legend=False)
     axes[measure_i].set(xticks=[0,1,2,3], xticklabels=xticks, ylabel=ylabels[measure_i], title=metrics[measure_i])
+    # TODO: style parameter has to be changed manually
+
+# not a part of for loop to make a legend
+measure_i = 3
+sns.lineplot(x="module index", y=metrics[measure_i], hue="network type", style="intra params", data=measures,
+             ci="sd", ax=axes[measure_i])
+axes[measure_i].set(xticks=[0,1,2,3], xticklabels=xticks, ylabel=ylabels[measure_i], title=metrics[measure_i])
+
+# handling legend in a dirty way
+handles, labels = axes[-1].get_legend_handles_labels()
+axes[-1].legend(handles=handles[1:4]+handles[5:], labels=labels[1:4]+labels[5:], bbox_to_anchor=(1.05, 1.1))
+
+# save the figure
 fig.tight_layout()
-plt.savefig("ultimate.pdf", bbox_to_inches="tight")
+plt.savefig("ultimate_intra={}_inter={}.pdf".format(intra_mode, inter_mode), bbox_to_inches="tight")
 
 
 
