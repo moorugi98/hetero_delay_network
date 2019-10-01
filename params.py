@@ -6,10 +6,11 @@ settings for simulation environment
 # PATH = os.getcwd() + "/data/hetero/unimodal/intra/"
 PATH = os.getcwd() + "/data/"
 # PATH = os.environ["TMPDIR"] + "/"
-num_process = 7  # how many cores?
+num_process = 3  # how many cores?
 num_threads = 2  # how many process on each core?
 timeprint = False  # print the simulation progress live?
 endspiketime = 10000.0  # spike detector stops after this time
+short_threshold = 99999  # any time longer than this will start recording voltages, anything shorter starts spikes
 
 """
 neuron parameter
@@ -67,7 +68,8 @@ K_x_rest = int(p_x_rest * N_X)
 stimuli input
 """
 num_stimulus = 10  # num. of stimuli
-delta = 3  # Poisson process rate factor for stimuli
+# delta = 3  # Poisson process rate factor for stimuli
+v_stim = 4.0  # define v_stim independently of delta
 t_onset = 1.0  # when the stimuli starts
 t_asterisk = 200.0  # how long each Poisson process lasts
 input_spike_len = 800  # record from this much of neurons to use for classifier

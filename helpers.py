@@ -113,13 +113,13 @@ def train(volt_values, target_output, split_ratio=0.2):
         # split the data into training and test sets
         # x_train dim: #train_sample(#screenshots) x #features(#neurons)
         # y_train dim: #train_sample * #classes(stimuli)
-        x_train, x_test, y_train, y_test = train_test_split(volt_values[:, mod_i, :],  # for each module
+        print(np.transpose(np.int_(target_output)).shape)
+        x_train, x_test, y_train, y_test = train_test_split(np.transpose(volt_values[mod_i, :]),  # for each module
                                                             np.transpose(np.int_(target_output)), test_size=split_ratio)
-        print("x-train: ", x_train.shape, "y-train: ", y_train.shape)  # TODO: debug message
 
         # linear ridge regression with cross-validation for regularization parameter
         # deltas = [0.01, 0.1, 1, 10, 100]  # regularization parameter
-        deltas = [1e20, 1e40, 1e60, 1e80, 1e100, 1e120, 1e140, 1e160, 1e180]
+        deltas = [1e0, 1e3, 1e4, 2e4, 5e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10]
         fit_model = lm.RidgeClassifierCV(alphas=deltas, fit_intercept=True, store_cv_values=True)\
             .fit(X=x_train, y=y_train)
 
@@ -130,8 +130,8 @@ def train(volt_values, target_output, split_ratio=0.2):
         for sample_index, class_predicted in enumerate(predicted):
             sum += y_test[sample_index, class_predicted]  # entry of y_test are 0 and 1
         scores[mod_i] = sum / y_test.shape[0]  # normalize to 1 and save the accuracy for each module
-        print("weights dim. 1000 x 8000: ", fit_model.coef_[:4, :10])
-        print("intercepts dim. 1000: ", fit_model.intercept_[:10])
+        # print("weights: ", fit_model.coef_[:4, :10])
+        # print("intercepts: ", fit_model.intercept_[:10])
         print("reg.params.: ", fit_model.alpha_) # shit doesn't work
 
         # MSE
@@ -167,6 +167,8 @@ def reformat_df(network_mode, nparr):
     """
     df_new = pd.melt((pd.DataFrame(nparr, dtype=float)), var_name="module index")
     df_new["network type"] = network_mode
+    'network type', 'intra type', 'inter type',
+    'intra params', 'inter params'
     return df_new
 
 

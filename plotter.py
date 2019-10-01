@@ -8,6 +8,7 @@ import sys
 
 import numpy as np
 import pandas as pd
+import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -15,41 +16,44 @@ from params import *
 
 # parameters has to be tweaked manually
 intra_mode = 'unimodal'
-inter_mode = 'null'
-PATH = os.getcwd() + '/data/sum/measures_intra={}_inter={}.p'.format(intra_mode, inter_mode)
-
-
-
-"""
-metric figures
-"""
-
-# measures = concat_files("measures*.p")
-measures = pd.read_pickle(PATH)
-metrics = measures.columns[2:]  # 4 different metrics, first two columns are indices
+inter_mode = 'unimodal'
+PATH = os.getcwd() + '/data/sum/'
 xticks = ["M0", "M1", "M2", "M3"]  # xlabels are module indices
+
+
+
+"""
+measures figures
+"""
+# load data and melt in an appropriate format
+measures = pd.read_csv(PATH + 'measures_intra={}_inter={}.csv'.format(intra_mode, inter_mode), keep_default_na=False)
+metrics = measures.columns[1:]  # 4 different metrics, first column is indices
+measures = measures
+measures['network type'] = pd.Categorical(measures['network type'], categories=['noise', 'random', 'topo'])
+measures = measures.melt(id_vars=['module index', 'network type', 'intra type', 'intra params', 'inter type',
+                                  'inter params'], var_name='metric').sort_values(by=['network type', 'module index'])
+print(measures)
+
+# plot
+sns.set(font_scale=1.5)
+g = sns.FacetGrid(measures, col="metric", row="network type", hue='network type',
+                  sharex=True, sharey='col', margin_titles=False)
+g.map_dataframe(sns.lineplot, "module index", 'value', style='intra params', legend='full')
+
+# ticks and labels
 ylabels = ["Pearson CC", "LvR", "spikes/sec", "Fano factor"]  # ylabels are units of metrics
+for row_i in range(3):
+    for ax_i, ax in enumerate(g.axes[row_i]):
+        ax.set(title=None, ylabel=None)
+for ax_i, ax in enumerate(g.axes[0]):
+    ax.set(title=metrics[ax_i], ylabel=ylabels[ax_i], xticklabels=xticks, xticks=np.arange(4))
 
-fig, axes = plt.subplots(nrows=1, ncols=4, figsize=(10, 3))
-
-for measure_i in range(3):
-    sns.lineplot(x="module index", y=metrics[measure_i], hue="network type", style="intra params", data=measures,
-                 ci="sd", ax=axes[measure_i], legend=False)
-    axes[measure_i].set(xticks=[0,1,2,3], xticklabels=xticks, ylabel=ylabels[measure_i], title=metrics[measure_i])
-    # TODO: style parameter has to be changed manually
-
-# not a part of for loop to make a legend
-measure_i = 3
-sns.lineplot(x="module index", y=metrics[measure_i], hue="network type", style="intra params", data=measures,
-             ci="sd", ax=axes[measure_i])
-axes[measure_i].set(xticks=[0,1,2,3], xticklabels=xticks, ylabel=ylabels[measure_i], title=metrics[measure_i])
-
-# handling legend in a dirty way
-handles, labels = axes[-1].get_legend_handles_labels()
-axes[-1].legend(handles=handles[1:4]+handles[5:], labels=labels[1:4]+labels[5:], bbox_to_anchor=(1.05, 1.1))
+# legends
+g.add_legend()
+handles, labels = g.axes[-1][-1].get_legend_handles_labels()
+g.axes[-1][-1].legend(handles=handles[5:], labels=labels[5:], bbox_to_anchor=(1.9, 1.0))
 
 # save the figure
-fig.tight_layout()
 plt.savefig("ultimate_intra={}_inter={}.pdf".format(intra_mode, inter_mode), bbox_to_inches="tight")
 
 
@@ -57,15 +61,20 @@ plt.savefig("ultimate_intra={}_inter={}.pdf".format(intra_mode, inter_mode), bbo
 # """
 # training figures
 # """
-# accuracy_train = concat_files("accuracy_*.p")
-# MSE_train = concat_files("MSE_*.p")
+# training = pd.read_csv(PATH + 'training_intra={}_inter={}.csv'.format(intra_mode, inter_mode), keep_default_na=False)
+# training = training.melt(id_vars=['module index', 'network type', 'intra type',
+#        'inter type', 'intra params', 'inter params'], var_name='metric')
+# print(training)
 #
-# ylabels = ["Accuracy", "MSE"]
-# datas = [accuracy_train, MSE_train]
-# fig, axes = plt.subplots (nrows=2, ncols=1, figsize=(6,8))
-# for measure_i in range(2):
-#     sns.barplot(x="module index", y="value", hue="network type", data=datas[measure_i], ci="sd",
-#                 ax=axes[measure_i])
-#     axes[measure_i].set(ylabel=ylabels[measure_i], xticklabels=xticks)
-# fig.tight_layout()
-# plt.savefig("training.pdf", bbox_to_inches="tight")
+# sns.set(font_scale=2)
+# g = sns.catplot(x="module index", y="value", hue='intra params', data=training,
+#             kind='bar', row="metric", col='network type', sharey='row', margin_titles=True,
+#             ci='sd', alpha=0.7)
+# for ax in g.axes[0]:
+#     ax.axhline(y=0.1, color='black', linewidth=2.0)
+# # g = sns.catplot(x="module index", y="value", hue='network type', data=training,
+# #             kind='bar', col='metric', sharey=False, margin_titles=True,
+# #             ci='sd', alpha=0.7)
+# # g.fig.set_size_inches(15,8)
+#
+# plt.savefig("training_intra={}_inter={}.pdf".format(intra_mode, inter_mode), bbox_to_inches="tight")

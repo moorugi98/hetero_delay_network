@@ -1,11 +1,8 @@
 import sys
-import os
 import numpy as np
 import nest
 
 from params import *
-from helpers import reshape_arr
-
 
 
 """
@@ -42,14 +39,25 @@ setting delays using nest internal functions
 delay_mode = []
 delay_param = []
 delay_dict = []
+profile_num = 2  # repeat for recurrent connections and feed-forward connections
 
 delay_mode.append(sys.argv[4])
 delay_mode.append(sys.argv[5])
 delay_param.append(eval(sys.argv[6]))
 delay_param.append(eval(sys.argv[7]))
 
-for _ in range(2):
-    # intra-module recurrent connections delay
+# params for skipping connections
+if len(sys.argv) > 8:
+    skip_double = bool(eval(sys.argv[8]))  # True if double connection is activated
+    delay_mode.append(sys.argv[5])  # skipping connections follow the distribution of feed-forward connection
+    delay_param.append(eval(sys.argv[9]))  # increasing delays
+    skip_weights = eval(sys.argv[10])  # might want to use decreasing weights, as a factor
+    profile_num = 3  # now also repeat for skipping connections
+    print('skipping connnection with {} double connections and weights={}'.format(skip_double, skip_weights))
+
+
+# recurrent connections, feed-forward connections and then skipping connections
+for _ in range(profile_num):
     print("delays:")
     if delay_mode[_] == "null":  # use a integer delay
         if delay_param[_] == "null":
@@ -69,7 +77,6 @@ for _ in range(2):
         print("fucked up")
         exit()
 
-print("delay dict: ", delay_dict)
 
 
 
@@ -91,7 +98,7 @@ for mod_i in range(module_depth):  # iterate over different modules
     nest.SetStatus(current_mod_pop, "V_m",
                    np.random.uniform(E_L, V_th, len(current_mod_pop)))  # random init. membrane potential
 # I run short simulations for recording spikes and long simulations for recording voltages
-if sim_time < 99999:
+if sim_time < short_threshold:
     for mod_i in range(module_depth):  # don't use the same for loops to avoid gid getting mixed
         # spike detector for each module. Record only for 10 seconds
         spike_device.append(
@@ -130,13 +137,14 @@ for mod_i in range(module_depth):
 """
 if stimuli is on, create input stimuli and corresponding poisson gen. and connect them to the input module
 """
-# long simulations
-if ((network_mode == "random") or (network_mode == "topo")) and (sim_time > 99999):
-    # voltmeter for the whole network, record when the stimuli changes
-    voltage_device = nest.Create("voltmeter", params={'withgid': True, "interval": t_asterisk, "start": t_onset,
-                                                      "to_file": False, "to_memory": True})
-    # connect voltmeter to exci. neurons
-    [nest.Connect(voltage_device, epop_module, conn_spec={"rule": "all_to_all"}) for epop_module in pop_exci]
+if (network_mode == "random") or (network_mode == "topo"):
+    # record membrane potential for long simulations
+    if sim_time > short_threshold:
+        # voltmeter for the whole network, record when the stimuli changes
+        voltage_device = nest.Create("voltmeter", params={'withgid': True, "interval": t_asterisk, "start": t_onset,
+                                                          "to_file": False, "to_memory": True})
+        # connect voltmeter to exci. neurons
+        [nest.Connect(voltage_device, epop_module, conn_spec={"rule": "all_to_all"}) for epop_module in pop_exci]
 
     # init. stimuli pattern
     sym_seq_len = int(sim_time//t_asterisk)  # how many presentation during the simulation occurs
@@ -149,7 +157,8 @@ if ((network_mode == "random") or (network_mode == "topo")) and (sim_time > 9999
     for stim_sym in sym_seq:  # for each symbolic repr. of stimuli
         stim_time = np.arange(t_onset, t_onset + t_asterisk*sym_seq_len, t_asterisk)  # time points to turn on/off
         stim_rate = np.zeros(stim_time.shape[0])
-        stim_rate[stim_sym] = delta * v_x * input_spike_len  # assign right rate if it's on, 3*5*800 (linear sum-up)
+        stim_rate[stim_sym] = v_stim * input_spike_len  # TODO: v_stim or delta
+        # #delta * v_x * input_spike_len  # assign right rate if it's on, 3*5*800 (linear sum-up)
         # create generator for each stimulus
         inho_gen = nest.Create("inhomogeneous_poisson_generator")
         nest.SetStatus(inho_gen, {"rate_times": list(stim_time), "rate_values": list(stim_rate)})
@@ -176,6 +185,14 @@ if (network_mode == "noise") or (network_mode == "random"):
                          conn_spec={"rule": "all_to_all"})
             nest.Connect(gen_stim[stim_i], tuple(np.random.choice(pop_inhi[0], N_I_speci, replace=False)),
                          conn_spec={"rule": "all_to_all"})
+
+    # TODO: skipping connections
+    if len(sys.argv) > 8:
+        nest.Connect(pop_exci[0], pop[2], conn_spec={"rule": "pairwise_bernoulli", "p": p_ff},
+                     syn_spec={"model": "syn_exci", "delay": delay_dict[2], 'weight': gbar_E * skip_weights})
+        if skip_double:
+            nest.Connect(pop_exci[1], pop[3], conn_spec={"rule": "pairwise_bernoulli", "p": p_ff},
+                         syn_spec={"model": "syn_exci", "delay": delay_dict[2], 'weight': gbar_E * skip_weights})
 
 
 ####
@@ -216,6 +233,19 @@ elif network_mode == "topo":
         nest.Connect(gen_stim[stim_i], specific_exci[0][stim_i], conn_spec={"rule": "all_to_all"})
         nest.Connect(gen_stim[stim_i], specific_inhi[0][stim_i], conn_spec={"rule": "all_to_all"})
 
+    # TODO: skipping connections
+    if len(sys.argv) > 8:
+        [nest.Connect(specific_exci[0][stim_i], specific_exci[2][stim_i] + specific_inhi[2][stim_i],
+                      conn_spec={"rule": "pairwise_bernoulli", "p": p_ff},
+                      syn_spec={"model": "syn_exci", "delay": delay_dict[2], 'weight': gbar_E * skip_weights})
+         for stim_i in range(num_stimulus)]
+        if skip_double:
+            [nest.Connect(specific_exci[1][stim_i], specific_exci[3][stim_i] + specific_inhi[3][stim_i],
+                          conn_spec={"rule": "pairwise_bernoulli", "p": p_ff},
+                          syn_spec={"model": "syn_exci", "delay": delay_dict[2], 'weight': gbar_E * skip_weights})
+             for stim_i in range(num_stimulus)]
+
+
 
 ####
 else:
@@ -236,44 +266,64 @@ simulate with extra time for stimuli to be set
 nest.Simulate(sim_time + t_onset)
 
 
-if sim_time < 99999:
+
+"""
+save the data
+"""
+# only when the simulation time is short
+if sim_time < short_threshold:
     spike_times = []
     spike_senders = []
     for mod_i in range(module_depth):
         data_spike = nest.GetStatus(spike_device[mod_i], "events")[0]
         spike_times.append(data_spike["times"])  # list of spike times with each component repr. layer
         spike_senders.append(data_spike["senders"])
-        np.save(PATH + "spiketimes_run={}_{}_intra={}{}_inter={}{}.npy".
-                format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
-                   np.array(spike_times))
-        np.save(PATH + "spikesenders_run={}_{}_intra={}{}_inter={}{}.npy".
-                format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
-                   np.array(spike_senders))
+
+        if len(sys.argv) > 8:
+            np.save(PATH + "spiketimes_run={}_{}_intra={}{}_inter={}{}_skip_double={}_d={}_w={}.npy".
+                    format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1],
+                           skip_double, delay_param[2], skip_weights),
+                       np.array(spike_times))
+            np.save(PATH + "spikesenders_run={}_{}_intra={}{}_inter={}{}_skip_double={}_d={}_w={}.npy".
+                    format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1],
+                           skip_double, delay_param[2], skip_weights),
+                       np.array(spike_senders))
+        else:
+            np.save(PATH + "spiketimes_run={}_{}_intra={}{}_inter={}{}.npy".
+                    format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+                    np.array(spike_times))
+            np.save(PATH + "spikesenders_run={}_{}_intra={}{}_inter={}{}.npy".
+                    format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+                    np.array(spike_senders))
 
 
-
-
-if ((network_mode == "random") or (network_mode == "topo")) and (sim_time > 9999):
-    np.save(PATH + "stimuli_run={}_{}_intra={}{}_inter={}{}.npy".
-               format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]), sym_seq)
-
-    data_volt = nest.GetStatus(voltage_device, "events")[0]  # data from voltmeter
-    # volt_gids = reshape_arr(data_volt['senders'])
-    # volt_values = reshape_arr(data_volt["V_m"])
+# only if the network has input and the simulation was long enough
+if ((network_mode == "random") or (network_mode == "topo")) and (sim_time > short_threshold):
+    data_volt = nest.GetStatus(voltage_device, "events")[0]
     gids = data_volt['senders']
     vms = data_volt['V_m']
-    np.save(PATH + "flatgids_run={}_{}_intra={}{}_inter={}{}.npy".
-            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
-            gids)
-    np.save(PATH + "flatvms_run={}_{}_intra={}{}_inter={}{}.npy".
-            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
-            vms)
-
+    # reshape the voltage values
     volt_values = np.zeros((module_depth, N_E, int(sim_time/t_asterisk)))
     for module_i in range(4):
         for nindex, nid in enumerate(range(1 + N * module_i, 1 + N * module_i + N_E)):
             volt_values[module_i, nindex] = vms[np.where(gids == nid)[0]]
-    np.save(PATH + "voltvalues_run={}_{}_intra={}{}_inter={}{}.npy".
-            format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
-            volt_values)
+
+    if len(sys.argv) > 8:
+        np.save(PATH + "stimuli_run={}_{}_intra={}{}_inter={}{}_skip_double={}_d={}_w={}.npy".
+                    format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1],
+                           skip_double, delay_param[2], skip_weights),
+                sym_seq)
+        np.save(PATH + "voltvalues_run={}_{}_intra={}{}_inter={}{}_skip_double={}_d={}_w={}.npy".
+                    format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1],
+                           skip_double, delay_param[2], skip_weights),
+                volt_values)
+
+    else:
+        np.save(PATH + "stimuli_run={}_{}_intra={}{}_inter={}{}.npy".
+                format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+                sym_seq)
+        np.save(PATH + "voltvalues_run={}_{}_intra={}{}_inter={}{}.npy".
+                format(runindex, network_mode, delay_mode[0], delay_param[0], delay_mode[1], delay_param[1]),
+                volt_values)
+
 
