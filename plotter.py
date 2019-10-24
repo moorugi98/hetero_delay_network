@@ -72,9 +72,6 @@ plt.savefig("ultimate_intra={}_inter={}.pdf".format(intra_mode, inter_mode), bbo
 #             ci='sd', alpha=0.7)
 # for ax in g.axes[0]:
 #     ax.axhline(y=0.1, color='black', linewidth=2.0)
-# # g = sns.catplot(x="module index", y="value", hue='network type', data=training,
-# #             kind='bar', col='metric', sharey=False, margin_titles=True,
-# #             ci='sd', alpha=0.7)
-# # g.fig.set_size_inches(15,8)
+
 #
 # plt.savefig("training_intra={}_inter={}.pdf".format(intra_mode, inter_mode), bbox_to_inches="tight")
